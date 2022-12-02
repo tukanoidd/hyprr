@@ -1,0 +1,19 @@
+[package]
+name = "hyprctl_rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Vitalii Lukyanov <tukanoid@outlook.com>"]
+
+[[bin]]
+name = "hyprr"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.0.29", features = ["derive", "color"] }
+color-eyre = "0.6.2"
+
+socket2 = "0.4.7"
+nix = "0.26.1"
+
+log = "0.4.17"
+pretty_env_logger = "0.4.0"

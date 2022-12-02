@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="NimProjectFileService" has-nim-files="false" />
+  <component name="Play2CompilerConfiguration">
+    <option name="PROJECT_PLAY_MODULE" value="" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="DMD64 D Compiler v2.097.2" project-jdk-type="DMD2 SDK">
+    <output url="file://$PROJECT_DIR$/out" />
+  </component>
+</project>
