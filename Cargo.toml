@@ -1,5 +1,5 @@
 [package]
-name = "hyprctl_rs"
+name = "hyprr"
 version = "0.1.0"
 edition = "2021"
 authors = ["Vitalii Lukyanov <tukanoid@outlook.com>"]
@@ -11,9 +11,15 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.0.29", features = ["derive", "color"] }
 color-eyre = "0.6.2"
+enum-iterator = "1.2.0"
+
+hyprland = "0.2.4"
 
 socket2 = "0.4.7"
 nix = "0.26.1"
 
 log = "0.4.17"
 pretty_env_logger = "0.4.0"
+
+iced = { version = "0.5.2", features = ["tokio", "canvas"] }
+iced_aw = { git = "https://github.com/iced-rs/iced_aw.git" }
