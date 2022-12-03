@@ -1,3 +1,4 @@
+use iced::widget::Space;
 use iced::{
     widget::{button, text, Column, Container, Scrollable},
     Alignment, Element, Length, Padding,
@@ -7,6 +8,8 @@ use crate::gui::app::GuiAppMsg;
 
 pub struct ScrollableList {
     items: Vec<Vec<String>>,
+    section_names: Vec<String>,
+    section_space: Length,
 
     width: Length,
     height: Length,
@@ -26,6 +29,8 @@ impl ScrollableList {
     pub fn with_items(items: Vec<Vec<String>>) -> ScrollableListBuilder {
         ScrollableListBuilder {
             items,
+            section_names: vec![],
+            section_space: None,
 
             width: None,
             height: None,
@@ -43,11 +48,19 @@ impl ScrollableList {
         }
     }
 
-    pub fn view<'a>(&self) -> iced::Element<'a, GuiAppMsg> {
-        let list = Container::new(Scrollable::new(self.items.iter().fold(
+    pub fn view<'a>(&self) -> Element<'a, GuiAppMsg> {
+        let list = Container::new(Scrollable::new(self.items.iter().enumerate().fold(
             Column::new().spacing(10),
-            |column, item| {
-                match item.len() {
+            |mut column, (index, item)| {
+                let section_name = self.section_names.get(index);
+                if let Some(section_name) = section_name {
+                    column = column
+                        .push(text("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"))
+                        .push(text(section_name))
+                        .push(text("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"));
+                };
+
+                column = match item.len() {
                     0 => column,
                     1 => column.push(text(item[0].clone())),
                     _ => column.push(item.iter().fold(
@@ -55,9 +68,13 @@ impl ScrollableList {
                         |inner_column, text_str| inner_column.push(text(text_str)),
                     )),
                 }
-                .push(text("--------------------------------"))
-                .width(Length::Fill)
-                .spacing(5)
+                .push(text("--------------------------------"));
+
+                if section_name.is_some() {
+                    column = column.push(Space::with_height(self.section_space));
+                }
+
+                column.width(Length::Fill).spacing(5)
             },
         )))
         .height(self.list_height);
@@ -71,6 +88,7 @@ impl ScrollableList {
             .padding(self.padding);
 
         if let Some(on_refresh) = self.on_refresh {
+            log::warn!("BUTTON ADDED");
             res = res.push(
                 button(text("Refresh"))
                     .height(self.button_height)
@@ -86,6 +104,8 @@ impl ScrollableList {
 #[derive(Default)]
 pub struct ScrollableListBuilder {
     items: Vec<Vec<String>>,
+    section_names: Vec<String>,
+    section_space: Option<Length>,
 
     list_height: Option<Length>,
 
@@ -101,12 +121,15 @@ pub struct ScrollableListBuilder {
     padding: Option<Padding>,
 }
 
+#[allow(dead_code)]
 impl ScrollableListBuilder {
     pub fn build(self) -> ScrollableList {
         ScrollableList {
             items: self.items,
+            section_names: self.section_names,
+            section_space: self.section_space.unwrap_or(Length::Units(20)),
 
-            on_refresh: None,
+            on_refresh: self.on_refresh,
 
             width: self.width.unwrap_or(Length::Fill),
             height: self.height.unwrap_or(Length::Fill),
@@ -131,6 +154,16 @@ impl ScrollableListBuilder {
 
     pub fn on_refresh(mut self, on_refresh: fn() -> GuiAppMsg) -> Self {
         self.on_refresh = Some(on_refresh);
+        self
+    }
+
+    pub fn section_names(mut self, section_names: Vec<String>) -> Self {
+        self.section_names = section_names;
+        self
+    }
+
+    pub fn section_space(mut self, section_space: Length) -> Self {
+        self.section_space = Some(section_space);
         self
     }
 
