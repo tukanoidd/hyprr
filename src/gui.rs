@@ -1,4 +1,5 @@
 mod app;
+mod scrollable_list;
 
 use color_eyre::eyre;
 use iced::window::Position;
