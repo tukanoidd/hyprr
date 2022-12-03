@@ -1,6 +1,8 @@
 # hyprr
-hyprctl tool rewritten in Rust with planned gui mode and maybe some other features in the future
+CLI Mode - rewritten hyprctl C++ implementation
+GUI Mode - basic info viewing at the moment
 
 ```
 hyprr -h # show help message
+hyprr -g # GUI Mode
 ```
