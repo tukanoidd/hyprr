@@ -22,4 +22,5 @@ log = "0.4.17"
 pretty_env_logger = "0.4.0"
 
 iced = { version = "0.5.2", features = ["tokio", "canvas"] }
+iced_native = "0.6.1"
 iced_aw = { git = "https://github.com/iced-rs/iced_aw.git" }

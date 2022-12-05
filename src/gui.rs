@@ -1,5 +1,8 @@
 mod app;
+mod dropdown_button;
 mod scrollable_list;
+mod tabs;
+mod wrapper_functions;
 
 use color_eyre::eyre;
 use iced::window::Position;
@@ -23,7 +26,9 @@ pub fn execute() -> eyre::Result<()> {
             icon: None,
         },
         flags: (),
-        default_font: None,
+        default_font: Some(include_bytes!(
+            "../resources/fonts/jetbrains_mono/fonts/ttf/JetBrainsMono-Medium.ttf"
+        )),
         default_text_size: 20,
         text_multithreading: true,
         antialiasing: true,

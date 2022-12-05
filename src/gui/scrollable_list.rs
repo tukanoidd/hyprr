@@ -1,6 +1,5 @@
-use iced::widget::Space;
 use iced::{
-    widget::{button, text, Column, Container, Scrollable},
+    widget::{button, text, Column, Container, Scrollable, Space},
     Alignment, Element, Length, Padding,
 };
 
@@ -25,26 +24,27 @@ pub struct ScrollableList {
     padding: Padding,
 }
 
+#[allow(dead_code)]
 impl ScrollableList {
-    pub fn with_items(items: Vec<Vec<String>>) -> ScrollableListBuilder {
-        ScrollableListBuilder {
+    pub fn with_items(items: Vec<Vec<String>>) -> Self {
+        Self {
             items,
             section_names: vec![],
-            section_space: None,
+            section_space: Length::Units(20),
 
-            width: None,
-            height: None,
+            width: Length::Fill,
+            height: Length::Fill,
 
-            list_height: None,
+            list_height: Length::Units(700),
 
             on_refresh: None,
-            button_width: None,
-            button_height: None,
+            button_width: Length::Units(80),
+            button_height: Length::Units(30),
 
-            alignment: None,
+            alignment: Alignment::Center,
 
-            spacing: None,
-            padding: None,
+            spacing: 40,
+            padding: [10, 300, 50, 300].into(),
         }
     }
 
@@ -99,58 +99,6 @@ impl ScrollableList {
 
         res.into()
     }
-}
-
-#[derive(Default)]
-pub struct ScrollableListBuilder {
-    items: Vec<Vec<String>>,
-    section_names: Vec<String>,
-    section_space: Option<Length>,
-
-    list_height: Option<Length>,
-
-    width: Option<Length>,
-    height: Option<Length>,
-
-    on_refresh: Option<fn() -> GuiAppMsg>,
-    button_width: Option<Length>,
-    button_height: Option<Length>,
-
-    alignment: Option<Alignment>,
-    spacing: Option<u16>,
-    padding: Option<Padding>,
-}
-
-#[allow(dead_code)]
-impl ScrollableListBuilder {
-    pub fn build(self) -> ScrollableList {
-        ScrollableList {
-            items: self.items,
-            section_names: self.section_names,
-            section_space: self.section_space.unwrap_or(Length::Units(20)),
-
-            on_refresh: self.on_refresh,
-
-            width: self.width.unwrap_or(Length::Fill),
-            height: self.height.unwrap_or(Length::Fill),
-
-            list_height: self.list_height.unwrap_or(Length::Units(700)),
-
-            button_width: self.button_width.unwrap_or(Length::Units(80)),
-            button_height: self.button_height.unwrap_or(Length::Units(30)),
-
-            alignment: self.alignment.unwrap_or(Alignment::Center),
-            spacing: self.spacing.unwrap_or(40),
-            padding: self
-                .padding
-                .map(Into::into)
-                .unwrap_or([10, 300, 50, 300].into()),
-        }
-    }
-
-    pub fn view<'a>(self) -> Element<'a, GuiAppMsg> {
-        self.build().view()
-    }
 
     pub fn on_refresh(mut self, on_refresh: fn() -> GuiAppMsg) -> Self {
         self.on_refresh = Some(on_refresh);
@@ -163,47 +111,47 @@ impl ScrollableListBuilder {
     }
 
     pub fn section_space(mut self, section_space: Length) -> Self {
-        self.section_space = Some(section_space);
+        self.section_space = section_space;
         self
     }
 
     pub fn width(mut self, width: Length) -> Self {
-        self.width = Some(width);
+        self.width = width;
         self
     }
 
     pub fn height(mut self, height: Length) -> Self {
-        self.height = Some(height);
+        self.height = height;
         self
     }
 
     pub fn list_height(mut self, list_height: Length) -> Self {
-        self.list_height = Some(list_height);
+        self.list_height = list_height;
         self
     }
 
     pub fn button_width(mut self, button_width: Length) -> Self {
-        self.button_width = Some(button_width);
+        self.button_width = button_width;
         self
     }
 
     pub fn button_height(mut self, button_height: Length) -> Self {
-        self.button_height = Some(button_height);
+        self.button_height = button_height;
         self
     }
 
     pub fn alignment(mut self, alignment: Alignment) -> Self {
-        self.alignment = Some(alignment);
+        self.alignment = alignment;
         self
     }
 
     pub fn spacing(mut self, spacing: u16) -> Self {
-        self.spacing = Some(spacing);
+        self.spacing = spacing;
         self
     }
 
     pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
-        self.padding = Some(padding.into());
+        self.padding = padding.into();
         self
     }
 }
