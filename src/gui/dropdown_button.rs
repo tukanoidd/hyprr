@@ -42,7 +42,7 @@ where
         self
     }
 
-    pub fn add_children(mut self, children: Vec<Element<'a, Message>>) -> Self {
+    pub fn add_children(mut self, children: impl Iterator<Item = Element<'a, Message>>) -> Self {
         self.children.extend(children);
         self
     }
@@ -63,6 +63,7 @@ where
             if is_open { "▼" } else { "▶" },
             self.text,
         )))
+        .padding([5, 10])
         .on_press(on_press);
 
         let res = Column::new()
@@ -70,6 +71,7 @@ where
             .width(self.width)
             .height(self.height)
             .padding(self.padding)
+            .spacing(10)
             .align_items(Alignment::Start);
 
         match is_open {

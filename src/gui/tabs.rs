@@ -1,9 +1,9 @@
 pub mod clients;
+mod devices;
 
 use hyprland::{
     data::{
-        Devices, Keyboard, LayerClient, LayerDisplay, Layers, Monitor, Monitors, Mouse, Tablet,
-        TabletBelongsTo, TabletType, Transforms, Workspace, Workspaces,
+        LayerClient, LayerDisplay, Layers, Monitor, Monitors, Transforms, Workspace, Workspaces,
     },
     shared::WorkspaceType,
 };
@@ -11,24 +11,25 @@ use iced::{widget::Column, Alignment, Command, Element};
 use iced_aw::{TabBar, TabLabel};
 
 use crate::gui::{
-    app::GuiAppMsg,
+    app,
     scrollable_list::ScrollableList,
-    tabs::clients::{ClientsTab, ClientsTabMsg},
+    tabs::{
+        clients::{ClientsTab, ClientsTabMsg},
+        devices::{DevicesTab, DevicesTabMsg},
+    },
     wrapper_functions::*,
 };
 
 #[derive(Debug, Clone)]
 pub enum TabsMsg {
     TabChanged(GuiAppTab),
-    Clients(ClientsTabMsg),
 
-    /*Devices(DevicesTabMsg),
-    Monitors(MonitorsTabMsg),
+    Clients(ClientsTabMsg),
+    Devices(DevicesTabMsg),
+
+    /*Monitors(MonitorsTabMsg),
     Layers(LayersTabMsg),
     Workspaces(WorkspacesTabMsg),*/
-    RefreshDevices,
-    DevicesRefreshed(Devices),
-
     RefreshMonitors,
     MonitorsRefreshed(Monitors),
 
@@ -37,6 +38,13 @@ pub enum TabsMsg {
 
     RefreshWorkspaces,
     WorkspacesRefreshed(Workspaces),
+}
+
+impl From<TabsMsg> for app::GuiAppMsg {
+    #[inline]
+    fn from(value: TabsMsg) -> Self {
+        app::GuiAppMsg::Tabs(value)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, enum_iterator::Sequence)]
@@ -90,8 +98,8 @@ pub struct Tabs {
     current_tab: GuiAppTab,
 
     clients_tab: ClientsTab,
+    devices_tab: DevicesTab,
 
-    devices: Devices,
     monitors: Monitors,
     layers: Layers,
     workspaces: Workspaces,
@@ -100,33 +108,29 @@ pub struct Tabs {
 impl Tabs {
     pub fn new() -> Self {
         Self {
-            current_tab: GuiAppTab::Devices,
+            current_tab: GuiAppTab::Clients,
 
             clients_tab: ClientsTab::new(),
+            devices_tab: DevicesTab::new(),
 
-            devices: Devices {
-                mice: vec![],
-                keyboards: vec![],
-                tablets: vec![],
-            },
             monitors: vec![],
             layers: Default::default(),
             workspaces: vec![],
         }
     }
 
-    pub fn view(&self) -> Element<GuiAppMsg> {
+    pub fn view(&self) -> Element<app::GuiAppMsg> {
         Column::new()
             .push(TabBar::width_tab_labels(
                 self.current_tab.into(),
                 enum_iterator::all::<GuiAppTab>()
                     .map(|tab| TabLabel::Text(tab.label().to_string()))
                     .collect(),
-                |new_tab| GuiAppMsg::Tabs(TabsMsg::TabChanged(new_tab.into())),
+                |new_tab| TabsMsg::TabChanged(new_tab.into()).into(),
             ))
             .push(match self.current_tab {
                 GuiAppTab::Clients => self.clients_tab.view(),
-                GuiAppTab::Devices => Self::devices_tab(&self.devices),
+                GuiAppTab::Devices => self.devices_tab.view(),
                 GuiAppTab::Monitors => Self::monitors_tab(&self.monitors),
                 GuiAppTab::Layers => Self::layers_tab(&self.layers),
                 GuiAppTab::Workspaces => Self::workspaces_tab(&self.workspaces),
@@ -137,109 +141,7 @@ impl Tabs {
             .into()
     }
 
-    fn devices_tab(devices: &Devices) -> Element<GuiAppMsg> {
-        let mice = &devices.mice;
-        let keyboards = &devices.keyboards;
-        let tablets = &devices.tablets;
-
-        let mut res = Vec::new();
-
-        res.push(mice.iter().fold(
-            Vec::new(),
-            |mut res: Vec<String>, Mouse { address, name }: &Mouse| {
-                res.push(format!("Mouse {address}"));
-                res.push(format!("    Name: {name}"));
-
-                res
-            },
-        ));
-        res.push(keyboards.iter().fold(
-            Vec::new(),
-            |mut res: Vec<String>,
-             Keyboard {
-                 address,
-                 name,
-                 rules,
-                 model,
-                 layout,
-                 variant,
-                 options,
-                 active_keymap,
-             }: &Keyboard| {
-                res.push(format!("Keyboard \"{name}\""));
-                res.push(format!("    Address: {address}"));
-                res.push(format!("    Rules: {rules}"));
-                res.push(format!("    Model: {model}"));
-                res.push(format!("    Layout: {layout}"));
-                res.push(format!("    Variant: {variant}"));
-                res.push(format!("    Options: {options}"));
-                res.push(format!("    Active Keymap: {active_keymap}"));
-
-                res
-            },
-        ));
-        res.push(tablets.iter().fold(
-            Vec::new(),
-            |mut res: Vec<String>,
-             Tablet {
-                 address,
-                 tablet_type,
-                 belongs_to,
-                 name,
-             }: &Tablet| {
-                res.push(format!(
-                    "Tablet \"{}\"",
-                    name.clone().unwrap_or("Unknown".to_string())
-                ));
-                res.push(format!("    Address: {address}"));
-                res.push(format!(
-                    "    Type: {}",
-                    match tablet_type {
-                        Some(tablet_type) => {
-                            match tablet_type {
-                                TabletType::TabletPad => "Tablet Pad",
-                                TabletType::TabletTool => "Tablet Tool",
-                            }
-                        }
-                        None => {
-                            "Unknown"
-                        }
-                    }
-                ));
-                res.push(format!(
-                    "    Belongs to: {}",
-                    match belongs_to {
-                        Some(belongs_to) => {
-                            match belongs_to {
-                                TabletBelongsTo::TabletPad { name, address } => {
-                                    format!("Tablet Pad \"{}\" (address: {})", name, address)
-                                }
-                                TabletBelongsTo::Address(address) => {
-                                    format!("Address: {})", address)
-                                }
-                            }
-                        }
-                        None => {
-                            "Unknown".to_string()
-                        }
-                    }
-                ));
-
-                res
-            },
-        ));
-
-        ScrollableList::with_items(res)
-            .section_names(vec![
-                "Mice".to_string(),
-                "Keyboards".to_string(),
-                "Tablets".to_string(),
-            ])
-            .on_refresh(|| GuiAppMsg::Tabs(TabsMsg::RefreshDevices))
-            .view()
-    }
-
-    fn monitors_tab(monitors: &Monitors) -> Element<GuiAppMsg> {
+    fn monitors_tab(monitors: &Monitors) -> Element<app::GuiAppMsg> {
         ScrollableList::with_items(
             monitors
                 .iter()
@@ -314,11 +216,11 @@ impl Tabs {
                 )
                 .collect(),
         )
-        .on_refresh(|| GuiAppMsg::Tabs(TabsMsg::RefreshMonitors))
+        .on_refresh(|| TabsMsg::RefreshMonitors.into())
         .view()
     }
 
-    fn layers_tab(layers: &Layers) -> Element<GuiAppMsg> {
+    fn layers_tab(layers: &Layers) -> Element<app::GuiAppMsg> {
         ScrollableList::with_items(
             layers
                 .iter()
@@ -346,11 +248,11 @@ impl Tabs {
                 )
                 .collect(),
         )
-            .on_refresh(|| GuiAppMsg::Tabs(TabsMsg::RefreshLayers))
+            .on_refresh(|| TabsMsg::RefreshLayers.into())
             .view()
     }
 
-    fn workspaces_tab(workspaces: &Workspaces) -> Element<GuiAppMsg> {
+    fn workspaces_tab(workspaces: &Workspaces) -> Element<app::GuiAppMsg> {
         ScrollableList::with_items(
             workspaces
                 .iter()
@@ -383,11 +285,11 @@ impl Tabs {
                 )
                 .collect(),
         )
-        .on_refresh(|| GuiAppMsg::Tabs(TabsMsg::RefreshWorkspaces))
+        .on_refresh(|| TabsMsg::RefreshWorkspaces.into())
         .view()
     }
 
-    pub fn update(&mut self, msg: TabsMsg) -> Command<GuiAppMsg> {
+    pub fn update(&mut self, msg: TabsMsg) -> Command<app::GuiAppMsg> {
         match msg {
             TabsMsg::TabChanged(new_tab) => {
                 self.current_tab = new_tab;
@@ -396,64 +298,59 @@ impl Tabs {
                     GuiAppTab::Clients => {
                         if self.clients_tab.is_empty() {
                             return Command::perform(get_clients(), |clients| {
-                                GuiAppMsg::Tabs(TabsMsg::Clients(ClientsTabMsg::Refreshed(clients)))
+                                ClientsTabMsg::Refreshed(clients).into()
+                            });
+                        }
+                    }
+                    GuiAppTab::Devices => {
+                        if self.devices_tab.is_empty() {
+                            return Command::perform(get_devices(), |devices| {
+                                DevicesTabMsg::Refreshed(devices).into()
                             });
                         }
                     }
                     GuiAppTab::Monitors => {
                         if self.monitors.is_empty() {
                             return Command::perform(get_monitors(), |monitors| {
-                                GuiAppMsg::Tabs(TabsMsg::MonitorsRefreshed(monitors))
-                            });
-                        }
-                    }
-                    GuiAppTab::Devices => {
-                        if self.devices.keyboards.is_empty() && self.devices.mice.is_empty() {
-                            return Command::perform(get_devices(), |devices| {
-                                GuiAppMsg::Tabs(TabsMsg::DevicesRefreshed(devices))
+                                TabsMsg::MonitorsRefreshed(monitors).into()
                             });
                         }
                     }
                     GuiAppTab::Layers => {
                         if self.layers.is_empty() {
                             return Command::perform(get_layers(), |layers| {
-                                GuiAppMsg::Tabs(TabsMsg::LayersRefreshed(layers))
+                                TabsMsg::LayersRefreshed(layers).into()
                             });
                         }
                     }
                     GuiAppTab::Workspaces => {
                         if self.workspaces.is_empty() {
                             return Command::perform(get_workspaces(), |workspaces| {
-                                GuiAppMsg::Tabs(TabsMsg::WorkspacesRefreshed(workspaces))
+                                TabsMsg::WorkspacesRefreshed(workspaces).into()
                             });
                         }
                     }
                 }
             }
             TabsMsg::Clients(clients_msg) => return self.clients_tab.update(clients_msg),
-            TabsMsg::RefreshDevices => {
-                return Command::perform(get_devices(), |devices| {
-                    GuiAppMsg::Tabs(TabsMsg::DevicesRefreshed(devices))
-                });
-            }
-            TabsMsg::DevicesRefreshed(devices) => self.devices = devices,
+            TabsMsg::Devices(devices_msg) => return self.devices_tab.update(devices_msg),
 
             TabsMsg::RefreshMonitors => {
                 return Command::perform(get_monitors(), |monitors| {
-                    GuiAppMsg::Tabs(TabsMsg::MonitorsRefreshed(monitors))
+                    TabsMsg::MonitorsRefreshed(monitors).into()
                 });
             }
             TabsMsg::MonitorsRefreshed(new_monitor_list) => self.monitors = new_monitor_list,
 
             TabsMsg::RefreshLayers => {
                 return Command::perform(get_layers(), |layers| {
-                    GuiAppMsg::Tabs(TabsMsg::LayersRefreshed(layers))
+                    TabsMsg::LayersRefreshed(layers).into()
                 });
             }
             TabsMsg::LayersRefreshed(layers) => self.layers = layers,
             TabsMsg::RefreshWorkspaces => {
                 return Command::perform(get_workspaces(), |workspaces| {
-                    GuiAppMsg::Tabs(TabsMsg::WorkspacesRefreshed(workspaces))
+                    TabsMsg::WorkspacesRefreshed(workspaces).into()
                 });
             }
             TabsMsg::WorkspacesRefreshed(workspaces) => self.workspaces = workspaces,
