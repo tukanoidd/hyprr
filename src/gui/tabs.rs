@@ -1,23 +1,23 @@
 pub mod clients;
 mod devices;
+mod monitors;
 mod templates;
 
 use hyprland::{
-    data::{
-        LayerClient, LayerDisplay, Layers, Monitor, Monitors, Transforms, Workspace, Workspaces,
-    },
+    data::{LayerClient, LayerDisplay, Layers, Workspace, Workspaces},
     shared::WorkspaceType,
 };
 use iced::{widget::Column, Alignment, Command, Element};
 use iced_aw::{TabBar, TabLabel};
 
-use crate::gui::tabs::templates::TabTemplate;
 use crate::gui::{
     app,
     scrollable_list::ScrollableList,
     tabs::{
         clients::{ClientsTab, ClientsTabMsg},
         devices::{DevicesTab, DevicesTabMsg},
+        monitors::{MonitorsTab, MonitorsTabMsg},
+        templates::TabTemplate,
     },
     wrapper_functions::*,
 };
@@ -28,13 +28,11 @@ pub enum TabsMsg {
 
     Clients(ClientsTabMsg),
     Devices(DevicesTabMsg),
+    Monitors(MonitorsTabMsg),
 
-    /*Monitors(MonitorsTabMsg),
+    /*
     Layers(LayersTabMsg),
     Workspaces(WorkspacesTabMsg),*/
-    RefreshMonitors,
-    MonitorsRefreshed(Monitors),
-
     RefreshLayers,
     LayersRefreshed(Layers),
 
@@ -101,8 +99,8 @@ pub struct Tabs {
 
     clients_tab: ClientsTab,
     devices_tab: DevicesTab,
+    monitors_tab: MonitorsTab,
 
-    monitors: Monitors,
     layers: Layers,
     workspaces: Workspaces,
 }
@@ -114,8 +112,8 @@ impl Tabs {
 
             clients_tab: ClientsTab::new(),
             devices_tab: DevicesTab::new(),
+            monitors_tab: MonitorsTab::new(),
 
-            monitors: vec![],
             layers: Default::default(),
             workspaces: vec![],
         }
@@ -133,7 +131,7 @@ impl Tabs {
             .push(match self.current_tab {
                 GuiAppTab::Clients => self.clients_tab.view(ClientsTabMsg::Refresh),
                 GuiAppTab::Devices => self.devices_tab.view(DevicesTabMsg::Refresh),
-                GuiAppTab::Monitors => Self::monitors_tab(&self.monitors),
+                GuiAppTab::Monitors => self.monitors_tab.view(MonitorsTabMsg::Refresh),
                 GuiAppTab::Layers => Self::layers_tab(&self.layers),
                 GuiAppTab::Workspaces => Self::workspaces_tab(&self.workspaces),
             })
@@ -141,85 +139,6 @@ impl Tabs {
             .spacing(15)
             .padding([0, 80, 20, 80])
             .into()
-    }
-
-    fn monitors_tab(monitors: &Monitors) -> Element<app::GuiAppMsg> {
-        ScrollableList::with_items(
-            monitors
-                .iter()
-                .map(
-                    |Monitor {
-                         id,
-                         name,
-                         width,
-                         height,
-                         refresh_rate,
-                         x,
-                         y,
-                         active_workspace,
-                         reserved,
-                         scale,
-                         transform,
-                         focused,
-                     }: &Monitor| {
-                        vec![
-                            format!("Monitor {id} ({name})"),
-                            format!("    Size: {width}x{height}"),
-                            format!("    Refresh Rate: {refresh_rate}Hz"),
-                            format!("    Position: {x}x{y}"),
-                            format!(
-                                "    Active Workspace: {}",
-                                match active_workspace.id {
-                                    WorkspaceType::Regular(id) => {
-                                        format!("Regular (id: {}) \"{}\"", id, name)
-                                    }
-                                    WorkspaceType::Special => {
-                                        format!("Special \"{}\"", active_workspace.name)
-                                    }
-                                }
-                            ),
-                            format!(
-                                "    Reserved: ({}, {}, {}, {})",
-                                reserved.0, reserved.1, reserved.2, reserved.3
-                            ),
-                            format!("    Scale: {scale}"),
-                            format!(
-                                "    Transform: {}",
-                                match transform {
-                                    Transforms::Normal => {
-                                        "Normal"
-                                    }
-                                    Transforms::Normal90 => {
-                                        "Normal + 90"
-                                    }
-                                    Transforms::Normal180 => {
-                                        "Normal + 180"
-                                    }
-                                    Transforms::Normal270 => {
-                                        "Normal + 270"
-                                    }
-                                    Transforms::Flipped => {
-                                        "Flipped"
-                                    }
-                                    Transforms::Flipped90 => {
-                                        "Flipped + 90"
-                                    }
-                                    Transforms::Flipped180 => {
-                                        "Flipped + 180"
-                                    }
-                                    Transforms::Flipped270 => {
-                                        "Flipped + 270"
-                                    }
-                                }
-                            ),
-                            format!("    Focused: {}", focused),
-                        ]
-                    },
-                )
-                .collect(),
-        )
-        .on_refresh(|| TabsMsg::RefreshMonitors.into())
-        .view()
     }
 
     fn layers_tab(layers: &Layers) -> Element<app::GuiAppMsg> {
@@ -312,9 +231,9 @@ impl Tabs {
                         }
                     }
                     GuiAppTab::Monitors => {
-                        if self.monitors.is_empty() {
+                        if self.monitors_tab.is_empty() {
                             return Command::perform(get_monitors(), |monitors| {
-                                TabsMsg::MonitorsRefreshed(monitors).into()
+                                MonitorsTabMsg::Refreshed(monitors).into()
                             });
                         }
                     }
@@ -336,13 +255,7 @@ impl Tabs {
             }
             TabsMsg::Clients(clients_msg) => return self.clients_tab.update(clients_msg),
             TabsMsg::Devices(devices_msg) => return self.devices_tab.update(devices_msg),
-
-            TabsMsg::RefreshMonitors => {
-                return Command::perform(get_monitors(), |monitors| {
-                    TabsMsg::MonitorsRefreshed(monitors).into()
-                });
-            }
-            TabsMsg::MonitorsRefreshed(new_monitor_list) => self.monitors = new_monitor_list,
+            TabsMsg::Monitors(monitor_msg) => return self.monitors_tab.update(monitor_msg),
 
             TabsMsg::RefreshLayers => {
                 return Command::perform(get_layers(), |layers| {
