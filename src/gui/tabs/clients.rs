@@ -5,12 +5,15 @@ use hyprland::{
     shared::WorkspaceType,
 };
 use iced::{
-    widget::{button, text, Column, Scrollable, Space},
-    Alignment, Command, Element, Length,
+    widget::{text, Column},
+    Command,
 };
 
 use crate::gui::{
-    app, dropdown_button::DropdownButton, tabs::TabsMsg, wrapper_functions::get_clients,
+    app,
+    dropdown_button::DropdownButton,
+    tabs::{templates::TabTemplate, TabsMsg},
+    wrapper_functions::get_clients,
 };
 
 #[derive(Debug, Clone)]
@@ -40,24 +43,49 @@ impl ClientsTab {
             dropdowns_open: HashMap::new(),
         }
     }
+}
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.clients.is_empty()
+impl TabTemplate for ClientsTab {
+    type Message = ClientsTabMsg;
+    type AppMessage = app::GuiAppMsg;
+
+    fn update(&mut self, msg: Self::Message) -> Command<Self::AppMessage> {
+        match msg {
+            ClientsTabMsg::Refresh => {
+                return Command::perform(get_clients(), |clients| {
+                    ClientsTabMsg::Refreshed(clients).into()
+                })
+            }
+            ClientsTabMsg::Refreshed(clients) => {
+                self.clients = clients;
+
+                self.clients
+                    .iter()
+                    .for_each(|Client { title, .. }: &Client| {
+                        if !self.dropdowns_open.contains_key(title) {
+                            self.dropdowns_open.insert(title.clone(), false);
+                        }
+                    })
+            }
+            ClientsTabMsg::ToggleClient(title) => {
+                self.dropdowns_open
+                    .entry(title)
+                    .and_modify(|val: &mut bool| {
+                        *val = !*val;
+                    })
+                    .or_insert(false);
+            }
+        }
+
+        Command::none()
     }
 
-    pub fn view(&self) -> Element<app::GuiAppMsg> {
-        let refresh_button = button(text("Refresh"))
-            .height(Length::Units(30))
-            .width(Length::Units(80))
-            .on_press(ClientsTabMsg::Refresh.into());
-
-        let clients = self.clients.iter().fold(
-            Column::new()
-                .push(refresh_button)
-                .push(Space::with_height(Length::Units(20)))
-                .align_items(Alignment::Center)
-                .spacing(10),
+    fn add_info_to_list<'a>(
+        &'a self,
+        list: Column<'a, Self::AppMessage>,
+    ) -> Column<'a, Self::AppMessage> {
+        self.clients.iter().fold(
+            list,
             |col: Column<app::GuiAppMsg>,
              Client {
                  address,
@@ -98,39 +126,11 @@ impl ClientsTab {
                         ),
                 )
             },
-        );
-
-        Scrollable::new(clients).into()
+        )
     }
 
-    pub fn update(&mut self, msg: ClientsTabMsg) -> Command<app::GuiAppMsg> {
-        match msg {
-            ClientsTabMsg::Refresh => {
-                return Command::perform(get_clients(), |clients| {
-                    ClientsTabMsg::Refreshed(clients).into()
-                })
-            }
-            ClientsTabMsg::Refreshed(clients) => {
-                self.clients = clients;
-
-                self.clients
-                    .iter()
-                    .for_each(|Client { title, .. }: &Client| {
-                        if !self.dropdowns_open.contains_key(title) {
-                            self.dropdowns_open.insert(title.clone(), false);
-                        }
-                    })
-            }
-            ClientsTabMsg::ToggleClient(title) => {
-                self.dropdowns_open
-                    .entry(title)
-                    .and_modify(|val: &mut bool| {
-                        *val = !*val;
-                    })
-                    .or_insert(false);
-            }
-        }
-
-        Command::none()
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.clients.is_empty()
     }
 }

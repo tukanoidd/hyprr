@@ -2,12 +2,15 @@ use std::collections::HashMap;
 
 use hyprland::data::{Devices, Keyboard, Mouse, Tablet, TabletBelongsTo, TabletType};
 use iced::{
-    widget::{button, text, Column, Scrollable, Space},
-    Alignment, Command, Element, Length,
+    widget::{text, Column},
+    Command,
 };
 
 use crate::gui::{
-    app, dropdown_button::DropdownButton, tabs::TabsMsg, wrapper_functions::get_devices,
+    app,
+    dropdown_button::DropdownButton,
+    tabs::{templates::TabTemplate, TabsMsg},
+    wrapper_functions::get_devices,
 };
 
 const MICE_CATEGORY: &str = "Mice";
@@ -45,20 +48,94 @@ impl DevicesTab {
             dropdowns_open: HashMap::new(),
         }
     }
+}
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.devices.mice.is_empty()
-            || self.devices.keyboards.is_empty()
-            || self.devices.tablets.is_empty()
+impl TabTemplate for DevicesTab {
+    type Message = DevicesTabMsg;
+    type AppMessage = app::GuiAppMsg;
+
+    fn update(&mut self, msg: Self::Message) -> Command<Self::AppMessage> {
+        match msg {
+            DevicesTabMsg::Refresh => {
+                return Command::perform(get_devices(), |devices| {
+                    DevicesTabMsg::Refreshed(devices).into()
+                })
+            }
+            DevicesTabMsg::Refreshed(devices) => {
+                self.devices = devices;
+
+                if !self.dropdowns_open.contains_key(MICE_CATEGORY) {
+                    self.dropdowns_open.insert(MICE_CATEGORY.to_string(), false);
+                }
+
+                if !self.dropdowns_open.contains_key(KEYBOARDS_CATEGORY) {
+                    self.dropdowns_open
+                        .insert(KEYBOARDS_CATEGORY.to_string(), false);
+                }
+
+                if !self.dropdowns_open.contains_key(TABLETS_CATEGORY) {
+                    self.dropdowns_open
+                        .insert(TABLETS_CATEGORY.to_string(), false);
+                }
+
+                self.devices
+                    .mice
+                    .iter()
+                    .for_each(|Mouse { address, .. }: &Mouse| {
+                        let title = format!("Mouse {address}");
+
+                        if !self.dropdowns_open.contains_key(&title) {
+                            self.dropdowns_open.insert(title.clone(), false);
+                        }
+                    });
+
+                self.devices
+                    .keyboards
+                    .iter()
+                    .for_each(|Keyboard { name, .. }: &Keyboard| {
+                        let title = format!("Keyboard \"{name}\"");
+
+                        if !self.dropdowns_open.contains_key(&title) {
+                            self.dropdowns_open.insert(title.clone(), false);
+                        }
+                    });
+
+                let mut unknwon_num = 0;
+
+                self.devices
+                    .tablets
+                    .iter()
+                    .for_each(|Tablet { name, .. }: &Tablet| {
+                        let title = format!(
+                            "Tablet \"{}\"",
+                            name.clone().unwrap_or({
+                                unknwon_num += 1;
+                                format!("Unknown {}", unknwon_num - 1)
+                            })
+                        );
+
+                        if !self.dropdowns_open.contains_key(&title) {
+                            self.dropdowns_open.insert(title.clone(), false);
+                        }
+                    });
+            }
+            DevicesTabMsg::ToggleDropdown(title) => {
+                self.dropdowns_open
+                    .entry(title)
+                    .and_modify(|val: &mut bool| {
+                        *val = !*val;
+                    })
+                    .or_insert(false);
+            }
+        }
+
+        Command::none()
     }
 
-    pub fn view(&self) -> Element<app::GuiAppMsg> {
-        let refresh_button = button(text("Refresh"))
-            .height(Length::Units(30))
-            .width(Length::Units(80))
-            .on_press(DevicesTabMsg::Refresh.into());
-
+    fn add_info_to_list<'a>(
+        &'a self,
+        list: Column<'a, Self::AppMessage>,
+    ) -> Column<'a, Self::AppMessage> {
         let mice = DropdownButton::new(MICE_CATEGORY)
             .add_children(
                 self.devices
@@ -187,93 +264,12 @@ impl DevicesTab {
                 DevicesTabMsg::ToggleDropdown(TABLETS_CATEGORY.to_string()).into(),
             );
 
-        let devices = Column::<app::GuiAppMsg>::new()
-            .push(refresh_button)
-            .push(Space::with_height(Length::Units(20)))
-            .push(mice)
-            .push(keyboards)
-            .push(tablets)
-            .align_items(Alignment::Center)
-            .spacing(10);
-
-        Scrollable::<app::GuiAppMsg>::new(devices).into()
+        list.push(mice).push(keyboards).push(tablets)
     }
 
-    pub fn update(&mut self, msg: DevicesTabMsg) -> Command<app::GuiAppMsg> {
-        match msg {
-            DevicesTabMsg::Refresh => {
-                return Command::perform(get_devices(), |devices| {
-                    DevicesTabMsg::Refreshed(devices).into()
-                })
-            }
-            DevicesTabMsg::Refreshed(devices) => {
-                self.devices = devices;
-
-                if !self.dropdowns_open.contains_key(MICE_CATEGORY) {
-                    self.dropdowns_open.insert(MICE_CATEGORY.to_string(), false);
-                }
-
-                if !self.dropdowns_open.contains_key(KEYBOARDS_CATEGORY) {
-                    self.dropdowns_open
-                        .insert(KEYBOARDS_CATEGORY.to_string(), false);
-                }
-
-                if !self.dropdowns_open.contains_key(TABLETS_CATEGORY) {
-                    self.dropdowns_open
-                        .insert(TABLETS_CATEGORY.to_string(), false);
-                }
-
-                self.devices
-                    .mice
-                    .iter()
-                    .for_each(|Mouse { address, .. }: &Mouse| {
-                        let title = format!("Mouse {address}");
-
-                        if !self.dropdowns_open.contains_key(&title) {
-                            self.dropdowns_open.insert(title.clone(), false);
-                        }
-                    });
-
-                self.devices
-                    .keyboards
-                    .iter()
-                    .for_each(|Keyboard { name, .. }: &Keyboard| {
-                        let title = format!("Keyboard \"{name}\"");
-
-                        if !self.dropdowns_open.contains_key(&title) {
-                            self.dropdowns_open.insert(title.clone(), false);
-                        }
-                    });
-
-                let mut unknwon_num = 0;
-
-                self.devices
-                    .tablets
-                    .iter()
-                    .for_each(|Tablet { name, .. }: &Tablet| {
-                        let title = format!(
-                            "Tablet \"{}\"",
-                            name.clone().unwrap_or({
-                                unknwon_num += 1;
-                                format!("Unknown {}", unknwon_num - 1)
-                            })
-                        );
-
-                        if !self.dropdowns_open.contains_key(&title) {
-                            self.dropdowns_open.insert(title.clone(), false);
-                        }
-                    });
-            }
-            DevicesTabMsg::ToggleDropdown(title) => {
-                self.dropdowns_open
-                    .entry(title)
-                    .and_modify(|val: &mut bool| {
-                        *val = !*val;
-                    })
-                    .or_insert(false);
-            }
-        }
-
-        Command::none()
+    fn is_empty(&self) -> bool {
+        self.devices.mice.is_empty()
+            || self.devices.keyboards.is_empty()
+            || self.devices.tablets.is_empty()
     }
 }

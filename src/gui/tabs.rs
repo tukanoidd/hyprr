@@ -1,5 +1,6 @@
 pub mod clients;
 mod devices;
+mod templates;
 
 use hyprland::{
     data::{
@@ -10,6 +11,7 @@ use hyprland::{
 use iced::{widget::Column, Alignment, Command, Element};
 use iced_aw::{TabBar, TabLabel};
 
+use crate::gui::tabs::templates::TabTemplate;
 use crate::gui::{
     app,
     scrollable_list::ScrollableList,
@@ -129,8 +131,8 @@ impl Tabs {
                 |new_tab| TabsMsg::TabChanged(new_tab.into()).into(),
             ))
             .push(match self.current_tab {
-                GuiAppTab::Clients => self.clients_tab.view(),
-                GuiAppTab::Devices => self.devices_tab.view(),
+                GuiAppTab::Clients => self.clients_tab.view(ClientsTabMsg::Refresh),
+                GuiAppTab::Devices => self.devices_tab.view(DevicesTabMsg::Refresh),
                 GuiAppTab::Monitors => Self::monitors_tab(&self.monitors),
                 GuiAppTab::Layers => Self::layers_tab(&self.layers),
                 GuiAppTab::Workspaces => Self::workspaces_tab(&self.workspaces),
