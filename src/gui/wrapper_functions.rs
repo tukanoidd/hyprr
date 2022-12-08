@@ -1,7 +1,9 @@
 use hyprland::data::{asynchronous as hypr_async, Clients, Devices, Layers, Monitors, Workspaces};
 
-pub async fn get_clients() -> Clients {
-    match hypr_async::get_clients().await {
+use crate::gui::tabs::templates::RefreshableTabData;
+
+pub async fn get_clients() -> Box<dyn RefreshableTabData> {
+    box match hypr_async::get_clients().await {
         Ok(clients) => clients,
         Err(err) => {
             log::error!("Error getting clients: {}", err);
@@ -10,8 +12,8 @@ pub async fn get_clients() -> Clients {
     }
 }
 
-pub async fn get_devices() -> Devices {
-    match hypr_async::get_devices().await {
+pub async fn get_devices() -> Box<dyn RefreshableTabData> {
+    box match hypr_async::get_devices().await {
         Ok(devices) => devices,
         Err(err) => {
             log::error!("Error getting devices: {}", err);
@@ -24,8 +26,8 @@ pub async fn get_devices() -> Devices {
     }
 }
 
-pub async fn get_monitors() -> Monitors {
-    match hypr_async::get_monitors().await {
+pub async fn get_monitors() -> Box<dyn RefreshableTabData> {
+    box match hypr_async::get_monitors().await {
         Ok(monitors) => monitors,
         Err(err) => {
             log::error!("Error getting monitors: {}", err);

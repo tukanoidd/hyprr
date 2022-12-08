@@ -1,7 +1,11 @@
 pub mod clients;
+pub mod templates;
+
 mod devices;
+mod layers;
 mod monitors;
-mod templates;
+
+use std::collections::HashMap;
 
 use hyprland::{
     data::{LayerClient, LayerDisplay, Layers, Workspace, Workspaces},
@@ -11,24 +15,24 @@ use iced::{widget::Column, Alignment, Command, Element};
 use iced_aw::{TabBar, TabLabel};
 
 use crate::gui::{
-    app,
+    app::GuiAppMsg,
     scrollable_list::ScrollableList,
     tabs::{
-        clients::{ClientsTab, ClientsTabMsg},
-        devices::{DevicesTab, DevicesTabMsg},
-        monitors::{MonitorsTab, MonitorsTabMsg},
-        templates::TabTemplate,
+        clients::ClientsTab,
+        devices::DevicesTab,
+        monitors::MonitorsTab,
+        templates::{RefreshableTabMsg, RefreshableTabTemplate},
     },
     wrapper_functions::*,
 };
+
+pub type MainRefreshableTabs = HashMap<GuiAppTab, Box<dyn RefreshableTabTemplate>>;
 
 #[derive(Debug, Clone)]
 pub enum TabsMsg {
     TabChanged(GuiAppTab),
 
-    Clients(ClientsTabMsg),
-    Devices(DevicesTabMsg),
-    Monitors(MonitorsTabMsg),
+    RefreshableTab(GuiAppTab, RefreshableTabMsg),
 
     /*
     Layers(LayersTabMsg),
@@ -40,14 +44,14 @@ pub enum TabsMsg {
     WorkspacesRefreshed(Workspaces),
 }
 
-impl From<TabsMsg> for app::GuiAppMsg {
+impl From<TabsMsg> for GuiAppMsg {
     #[inline]
     fn from(value: TabsMsg) -> Self {
-        app::GuiAppMsg::Tabs(value)
+        GuiAppMsg::Tabs(value)
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, enum_iterator::Sequence)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, enum_iterator::Sequence)]
 pub enum GuiAppTab {
     Clients,
     Devices,
@@ -97,9 +101,7 @@ impl GuiAppTab {
 pub struct Tabs {
     current_tab: GuiAppTab,
 
-    clients_tab: ClientsTab,
-    devices_tab: DevicesTab,
-    monitors_tab: MonitorsTab,
+    refreshable_tabs: MainRefreshableTabs,
 
     layers: Layers,
     workspaces: Workspaces,
@@ -107,19 +109,23 @@ pub struct Tabs {
 
 impl Tabs {
     pub fn new() -> Self {
+        let mut refreshable_tabs = MainRefreshableTabs::new();
+
+        refreshable_tabs.insert(GuiAppTab::Clients, Box::new(ClientsTab::new()));
+        refreshable_tabs.insert(GuiAppTab::Devices, Box::new(DevicesTab::new()));
+        refreshable_tabs.insert(GuiAppTab::Monitors, Box::new(MonitorsTab::new()));
+
         Self {
             current_tab: GuiAppTab::Clients,
 
-            clients_tab: ClientsTab::new(),
-            devices_tab: DevicesTab::new(),
-            monitors_tab: MonitorsTab::new(),
+            refreshable_tabs,
 
             layers: Default::default(),
             workspaces: vec![],
         }
     }
 
-    pub fn view(&self) -> Element<app::GuiAppMsg> {
+    pub fn view(&self) -> Element<GuiAppMsg> {
         Column::new()
             .push(TabBar::width_tab_labels(
                 self.current_tab.into(),
@@ -129,9 +135,11 @@ impl Tabs {
                 |new_tab| TabsMsg::TabChanged(new_tab.into()).into(),
             ))
             .push(match self.current_tab {
-                GuiAppTab::Clients => self.clients_tab.view(ClientsTabMsg::Refresh),
-                GuiAppTab::Devices => self.devices_tab.view(DevicesTabMsg::Refresh),
-                GuiAppTab::Monitors => self.monitors_tab.view(MonitorsTabMsg::Refresh),
+                GuiAppTab::Clients | GuiAppTab::Devices | GuiAppTab::Monitors => self
+                    .refreshable_tabs
+                    .get(&self.current_tab)
+                    .unwrap()
+                    .view(RefreshableTabMsg::Refresh),
                 GuiAppTab::Layers => Self::layers_tab(&self.layers),
                 GuiAppTab::Workspaces => Self::workspaces_tab(&self.workspaces),
             })
@@ -141,7 +149,7 @@ impl Tabs {
             .into()
     }
 
-    fn layers_tab(layers: &Layers) -> Element<app::GuiAppMsg> {
+    fn layers_tab(layers: &Layers) -> Element<GuiAppMsg> {
         ScrollableList::with_items(
             layers
                 .iter()
@@ -173,7 +181,7 @@ impl Tabs {
             .view()
     }
 
-    fn workspaces_tab(workspaces: &Workspaces) -> Element<app::GuiAppMsg> {
+    fn workspaces_tab(workspaces: &Workspaces) -> Element<GuiAppMsg> {
         ScrollableList::with_items(
             workspaces
                 .iter()
@@ -210,30 +218,21 @@ impl Tabs {
         .view()
     }
 
-    pub fn update(&mut self, msg: TabsMsg) -> Command<app::GuiAppMsg> {
+    pub fn update(&mut self, msg: TabsMsg) -> Command<GuiAppMsg> {
         match msg {
             TabsMsg::TabChanged(new_tab) => {
                 self.current_tab = new_tab;
 
                 match new_tab {
-                    GuiAppTab::Clients => {
-                        if self.clients_tab.is_empty() {
-                            return Command::perform(get_clients(), |clients| {
-                                ClientsTabMsg::Refreshed(clients).into()
-                            });
-                        }
-                    }
-                    GuiAppTab::Devices => {
-                        if self.devices_tab.is_empty() {
-                            return Command::perform(get_devices(), |devices| {
-                                DevicesTabMsg::Refreshed(devices).into()
-                            });
-                        }
-                    }
-                    GuiAppTab::Monitors => {
-                        if self.monitors_tab.is_empty() {
-                            return Command::perform(get_monitors(), |monitors| {
-                                MonitorsTabMsg::Refreshed(monitors).into()
+                    GuiAppTab::Clients | GuiAppTab::Devices | GuiAppTab::Monitors => {
+                        let tab = self.refreshable_tabs.get_mut(&new_tab).unwrap();
+
+                        if tab.is_empty() {
+                            return Command::perform(tab.query_data(), |data| {
+                                GuiAppMsg::Tabs(TabsMsg::RefreshableTab(
+                                    GuiAppTab::Devices,
+                                    RefreshableTabMsg::Refreshed(data),
+                                ))
                             });
                         }
                     }
@@ -253,9 +252,6 @@ impl Tabs {
                     }
                 }
             }
-            TabsMsg::Clients(clients_msg) => return self.clients_tab.update(clients_msg),
-            TabsMsg::Devices(devices_msg) => return self.devices_tab.update(devices_msg),
-            TabsMsg::Monitors(monitor_msg) => return self.monitors_tab.update(monitor_msg),
 
             TabsMsg::RefreshLayers => {
                 return Command::perform(get_layers(), |layers| {
@@ -269,6 +265,11 @@ impl Tabs {
                 });
             }
             TabsMsg::WorkspacesRefreshed(workspaces) => self.workspaces = workspaces,
+            TabsMsg::RefreshableTab(tab, msg) => {
+                if let Some(tab) = self.refreshable_tabs.get_mut(&tab) {
+                    tab.update(msg);
+                }
+            }
         }
 
         Command::none()

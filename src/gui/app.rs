@@ -1,7 +1,7 @@
 use iced::{executor, Application, Command, Element, Renderer, Theme};
 
 use crate::gui::{
-    tabs::{clients::ClientsTabMsg, Tabs, TabsMsg},
+    tabs::{templates::RefreshableTabMsg, GuiAppTab, Tabs, TabsMsg},
     wrapper_functions::*,
 };
 
@@ -24,7 +24,10 @@ impl Application for GuiApp {
         (
             Self { tabs: Tabs::new() },
             Command::perform(get_clients(), |clients| {
-                GuiAppMsg::Tabs(TabsMsg::Clients(ClientsTabMsg::Refreshed(clients)))
+                GuiAppMsg::Tabs(TabsMsg::RefreshableTab(
+                    GuiAppTab::Clients,
+                    RefreshableTabMsg::Refreshed(clients),
+                ))
             }),
         )
     }

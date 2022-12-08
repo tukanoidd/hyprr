@@ -4,33 +4,47 @@ use hyprland::{
     data::{Client, Clients},
     shared::WorkspaceType,
 };
-use iced::{
-    widget::{text, Column},
-    Command,
+use iced::widget::{text, Column};
+
+use crate::gui::tabs::TabsMsg;
+use crate::{
+    gui::{
+        app::GuiAppMsg,
+        dropdown_button::DropdownButton,
+        tabs::{
+            templates::{
+                RefreshableTabData, RefreshableTabDataUnit, RefreshableTabMsg,
+                RefreshableTabTemplate,
+            },
+            GuiAppTab,
+        },
+        wrapper_functions::get_clients,
+    },
+    refreshable_tab_impl,
 };
 
-use crate::gui::{
-    app,
-    dropdown_button::DropdownButton,
-    tabs::{templates::TabTemplate, TabsMsg},
-    wrapper_functions::get_clients,
-};
-
-#[derive(Debug, Clone)]
-pub enum ClientsTabMsg {
-    Refresh,
-    Refreshed(Clients),
-    ToggleClient(String),
-}
-
-impl From<ClientsTabMsg> for app::GuiAppMsg {
-    fn from(value: ClientsTabMsg) -> Self {
-        app::GuiAppMsg::Tabs(TabsMsg::Clients(value))
+impl RefreshableTabDataUnit for Client {
+    #[inline]
+    fn title(&self) -> String {
+        self.title.clone()
     }
 }
 
+impl RefreshableTabData for Clients {
+    #[inline]
+    fn titles(&self) -> Vec<String> {
+        self.iter().map(RefreshableTabDataUnit::title).collect()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+#[derive(Debug)]
 pub struct ClientsTab {
-    clients: Clients,
+    clients: Box<Clients>,
 
     dropdowns_open: HashMap<String, bool>,
 }
@@ -39,54 +53,17 @@ impl ClientsTab {
     #[inline]
     pub fn new() -> Self {
         Self {
-            clients: vec![],
+            clients: box vec![],
             dropdowns_open: HashMap::new(),
         }
     }
 }
 
-impl TabTemplate for ClientsTab {
-    type Message = ClientsTabMsg;
-    type AppMessage = app::GuiAppMsg;
-
-    fn update(&mut self, msg: Self::Message) -> Command<Self::AppMessage> {
-        match msg {
-            ClientsTabMsg::Refresh => {
-                return Command::perform(get_clients(), |clients| {
-                    ClientsTabMsg::Refreshed(clients).into()
-                })
-            }
-            ClientsTabMsg::Refreshed(clients) => {
-                self.clients = clients;
-
-                self.clients
-                    .iter()
-                    .for_each(|Client { title, .. }: &Client| {
-                        if !self.dropdowns_open.contains_key(title) {
-                            self.dropdowns_open.insert(title.clone(), false);
-                        }
-                    })
-            }
-            ClientsTabMsg::ToggleClient(title) => {
-                self.dropdowns_open
-                    .entry(title)
-                    .and_modify(|val: &mut bool| {
-                        *val = !*val;
-                    })
-                    .or_insert(false);
-            }
-        }
-
-        Command::none()
-    }
-
-    fn add_info_to_list<'a>(
-        &'a self,
-        list: Column<'a, Self::AppMessage>,
-    ) -> Column<'a, Self::AppMessage> {
+impl RefreshableTabTemplate for ClientsTab {
+    fn add_info_to_list<'a>(&'a self, list: Column<'a, GuiAppMsg>) -> Column<'a, GuiAppMsg> {
         self.clients.iter().fold(
             list,
-            |col: Column<app::GuiAppMsg>,
+            |col: Column<GuiAppMsg>,
              Client {
                  address,
                  at,
@@ -122,15 +99,21 @@ impl TabTemplate for ClientsTab {
                         .add_child(text(format!("XWayland: {xwayland}")))
                         .view(
                             self.dropdowns_open.get(title).copied().unwrap_or(false),
-                            ClientsTabMsg::ToggleClient(title.clone()).into(),
+                            GuiAppMsg::Tabs(TabsMsg::RefreshableTab(
+                                self.app_tab(),
+                                RefreshableTabMsg::ToggleDropdown(title.clone()),
+                            )),
                         ),
                 )
             },
         )
     }
 
+    refreshable_tab_impl!(data: clients<Clients> [query: get_clients]);
+    refreshable_tab_impl!(dropdowns);
+
     #[inline]
-    fn is_empty(&self) -> bool {
-        self.clients.is_empty()
+    fn app_tab(&self) -> GuiAppTab {
+        GuiAppTab::Clients
     }
 }
