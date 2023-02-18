@@ -1,367 +1,439 @@
-pub mod clients;
-pub mod templates;
-
-mod devices;
-mod layers;
-mod monitors;
-
-use std::collections::HashMap;
-
+use hyprland::data::{
+    Clients, Devices, Keyboard, LayerClient, LayerDisplay, Layers, Mouse, Tablet, TabletBelongsTo,
+    TabletType, Workspace,
+};
 use hyprland::{
-    data::{LayerClient, LayerDisplay, Layers, Workspace, Workspaces},
-    shared::WorkspaceType,
-};
-use iced::{widget::Column, Alignment, Command, Element};
-use iced_aw::{TabBar, TabLabel};
-
-use crate::gui::{
-    app::GuiAppMsg,
-    scrollable_list::ScrollableList,
-    tabs::{
-        clients::ClientsTab,
-        devices::DevicesTab,
-        monitors::MonitorsTab,
-        templates::{RefreshableTabMsg, RefreshableTabTemplate},
+    data::{
+        Client, CursorPosition, Monitor, Monitors, Transforms, Version, WorkspaceBasic, Workspaces,
     },
-    wrapper_functions::*,
+    prelude::*,
 };
+use itertools::Itertools;
 
-pub type MainRefreshableTabs = HashMap<GuiAppTab, Box<dyn RefreshableTabTemplate>>;
-
-#[derive(Debug, Clone)]
-pub enum TabsMsg {
-    TabChanged(GuiAppTab),
-
-    RefreshableTab(GuiAppTab, RefreshableTabMsg),
-
-    /*
-    Layers(LayersTabMsg),
-    Workspaces(WorkspacesTabMsg),*/
-    RefreshLayers,
-    LayersRefreshed(Layers),
-
-    RefreshWorkspaces,
-    WorkspacesRefreshed(Workspaces),
-}
-
-impl From<TabsMsg> for GuiAppMsg {
-    #[inline]
-    fn from(value: TabsMsg) -> Self {
-        GuiAppMsg::Tabs(value)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, enum_iterator::Sequence)]
-pub enum GuiAppTab {
-    Clients,
-    Devices,
+#[derive(Eq, PartialEq, enum_iterator::Sequence, serde::Serialize, serde::Deserialize)]
+pub(crate) enum AppTab {
+    General,
     Monitors,
-    Layers,
     Workspaces,
+    Clients,
+    Layers,
+    Devices,
 }
 
-impl From<usize> for GuiAppTab {
-    fn from(value: usize) -> Self {
-        match value {
-            0 => Self::Clients,
-            1 => Self::Devices,
-            2 => Self::Monitors,
-            3 => Self::Layers,
-            4 => Self::Workspaces,
-
-            _ => Self::Clients,
-        }
-    }
-}
-
-impl From<GuiAppTab> for usize {
-    fn from(value: GuiAppTab) -> Self {
-        match value {
-            GuiAppTab::Clients => 0,
-            GuiAppTab::Devices => 1,
-            GuiAppTab::Monitors => 2,
-            GuiAppTab::Layers => 3,
-            GuiAppTab::Workspaces => 4,
-        }
-    }
-}
-
-impl GuiAppTab {
-    pub fn label(&self) -> &'static str {
-        match self {
-            GuiAppTab::Clients => "Clients",
-            GuiAppTab::Devices => "Devices",
-            GuiAppTab::Monitors => "Monitors",
-            GuiAppTab::Layers => "Layers",
-            GuiAppTab::Workspaces => "Workspaces",
-        }
-    }
-}
-
-pub struct Tabs {
-    current_tab: GuiAppTab,
-
-    refreshable_tabs: MainRefreshableTabs,
-
-    layers: Layers,
-    workspaces: Workspaces,
-}
-
-impl Tabs {
-    pub fn new() -> Self {
-        let mut refreshable_tabs = MainRefreshableTabs::new();
-
-        refreshable_tabs.insert(GuiAppTab::Clients, Box::new(ClientsTab::new()));
-        refreshable_tabs.insert(GuiAppTab::Devices, Box::new(DevicesTab::new()));
-        refreshable_tabs.insert(GuiAppTab::Monitors, Box::new(MonitorsTab::new()));
-
-        Self {
-            current_tab: GuiAppTab::Clients,
-
-            refreshable_tabs,
-
-            layers: Default::default(),
-            workspaces: vec![],
-        }
-    }
-
-    pub fn view(&self) -> Element<GuiAppMsg> {
-        Column::new()
-            .push(TabBar::width_tab_labels(
-                self.current_tab.into(),
-                enum_iterator::all::<GuiAppTab>()
-                    .map(|tab| TabLabel::Text(tab.label().to_string()))
-                    .collect(),
-                |new_tab| TabsMsg::TabChanged(new_tab.into()).into(),
-            ))
-            .push(match self.current_tab {
-                GuiAppTab::Clients | GuiAppTab::Devices | GuiAppTab::Monitors => self
-                    .refreshable_tabs
-                    .get(&self.current_tab)
-                    .unwrap()
-                    .view(RefreshableTabMsg::Refresh),
-                GuiAppTab::Layers => Self::layers_tab(&self.layers),
-                GuiAppTab::Workspaces => Self::workspaces_tab(&self.workspaces),
-            })
-            .align_items(Alignment::Center)
-            .spacing(15)
-            .padding([0, 80, 20, 80])
-            .into()
-    }
-
-    fn layers_tab(layers: &Layers) -> Element<GuiAppMsg> {
-        ScrollableList::with_items(
-            layers
-                .iter()
-                .map(
-                    |(name, LayerDisplay { levels }): (&String, &LayerDisplay)| {
-                        levels.iter().fold(vec![format!("Layer \"{name}\"")], |mut res: Vec<String>, (
-                            level_name,
-                            layer_clients,
-                        ): (
-                            &String,
-                            &Vec<LayerClient>,
-                        )| {
-                            res.push(format!("    Level \"{level_name}\""));
-
-                            layer_clients.iter().fold(res, |mut res: Vec<String>, LayerClient { address, x, y, w, h, namespace }: &LayerClient| {
-                                res.push(format!("        Client \"{namespace}\""));
-                                res.push(format!("            Address: {address}"));
-                                res.push(format!("            Position: {x}x{y}"));
-                                res.push(format!("            Size: {w}x{h}"));
-                                res.push(format!("            Namespace: {namespace}"));
-                                res
-                            })
-                        })
-                    },
-                )
-                .collect(),
+impl std::fmt::Display for AppTab {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                AppTab::General => "General",
+                AppTab::Monitors => "Monitors",
+                AppTab::Workspaces => "Workspaces",
+                AppTab::Clients => "Clients",
+                AppTab::Layers => "Layers",
+                AppTab::Devices => "Devices",
+            }
         )
-            .on_refresh(|| TabsMsg::RefreshLayers.into())
-            .view()
     }
+}
 
-    fn workspaces_tab(workspaces: &Workspaces) -> Element<GuiAppMsg> {
-        ScrollableList::with_items(
-            workspaces
-                .iter()
-                .map(
-                    |Workspace {
-                         id,
-                         name,
-                         monitor,
-                         windows,
-                         fullscreen,
-                     }: &Workspace| {
-                        vec![
-                            format!(
-                                "Workspace {} ({})",
-                                name,
-                                match id {
-                                    WorkspaceType::Regular(id) => {
-                                        format!("Regular (id: {})", id)
-                                    }
-                                    WorkspaceType::Special => {
-                                        "Special".to_string()
-                                    }
-                                }
-                            ),
-                            format!("    Monitor \"{monitor}\"",),
-                            format!("    Windows: {}", windows),
-                            format!("    Fullscreen: {}", fullscreen),
-                        ]
-                    },
-                )
-                .collect(),
-        )
-        .on_refresh(|| TabsMsg::RefreshWorkspaces.into())
-        .view()
-    }
+impl AppTab {
+    pub fn selectable_label(&self, ui: &mut egui::Ui, checked: &mut bool) -> egui::Response {
+        let response = ui.selectable_label(*checked, self.to_string());
 
-    pub fn update(&mut self, msg: TabsMsg) -> Command<GuiAppMsg> {
-        match msg {
-            TabsMsg::TabChanged(new_tab) => {
-                self.current_tab = new_tab;
-
-                match new_tab {
-                    GuiAppTab::Clients | GuiAppTab::Devices | GuiAppTab::Monitors => {
-                        let tab = self.refreshable_tabs.get_mut(&new_tab).unwrap();
-
-                        if tab.is_empty() {
-                            return Command::perform(tab.query_data(), |data| {
-                                GuiAppMsg::Tabs(TabsMsg::RefreshableTab(
-                                    GuiAppTab::Devices,
-                                    RefreshableTabMsg::Refreshed(data),
-                                ))
-                            });
-                        }
-                    }
-                    GuiAppTab::Layers => {
-                        if self.layers.is_empty() {
-                            return Command::perform(get_layers(), |layers| {
-                                TabsMsg::LayersRefreshed(layers).into()
-                            });
-                        }
-                    }
-                    GuiAppTab::Workspaces => {
-                        if self.workspaces.is_empty() {
-                            return Command::perform(get_workspaces(), |workspaces| {
-                                TabsMsg::WorkspacesRefreshed(workspaces).into()
-                            });
-                        }
-                    }
-                }
-            }
-
-            TabsMsg::RefreshLayers => {
-                return Command::perform(get_layers(), |layers| {
-                    TabsMsg::LayersRefreshed(layers).into()
-                });
-            }
-            TabsMsg::LayersRefreshed(layers) => self.layers = layers,
-            TabsMsg::RefreshWorkspaces => {
-                return Command::perform(get_workspaces(), |workspaces| {
-                    TabsMsg::WorkspacesRefreshed(workspaces).into()
-                });
-            }
-            TabsMsg::WorkspacesRefreshed(workspaces) => self.workspaces = workspaces,
-            TabsMsg::RefreshableTab(tab, msg) => {
-                if let Some(tab) = self.refreshable_tabs.get_mut(&tab) {
-                    tab.update(msg);
-                }
-            }
+        if response.clicked() {
+            *checked = !*checked;
         }
 
-        Command::none()
+        response
     }
-}
 
-// TODO: make this work later
-/*struct MonitorsOutput<'a> {
-    monitors: &'a Monitors,
-}
+    pub fn window(&self, ui: &mut egui::Ui) {
+        egui::Window::new(self.to_string())
+            .resizable(true)
+            .drag_bounds(ui.clip_rect())
+            .show(ui.ctx(), |ui| {
+                self.data_view(ui);
+            });
+    }
 
-impl<'a> Program<GuiAppMsg> for MonitorsOutput<'a> {
-    type State = ();
+    fn data_view(&self, ui: &mut egui::Ui) {
+        fn client_data_view(
+            ui: &mut egui::Ui,
+            client: &Client,
+            title: impl Into<egui::WidgetText>,
+        ) {
+            ui.collapsing(title, |ui| {
+                let Client {
+                    address,
+                    at,
+                    size,
+                    workspace,
+                    floating,
+                    fullscreen,
+                    fullscreen_mode,
+                    monitor,
+                    class,
+                    title,
+                    pid,
+                    xwayland,
+                    pinned,
+                    grouped,
+                    swallowing,
+                } = client;
 
-    fn draw(
-        &self,
-        _state: &Self::State,
-        _theme: &Theme,
-        bounds: Rectangle,
-        _cursor: Cursor,
-    ) -> Vec<Geometry> {
-        let bounds = bounds.size();
+                ui.label(format!("PID: {pid}"));
+                ui.label(format!("Address: {address}"));
+                ui.label(format!("Class: {class}"));
+                ui.label(format!("Title: {title}"));
+                ui.label(format!("At: {}x{}", at.0, at.1));
+                ui.label(format!("Size: {}x{}", size.0, size.1));
+                ui.label(format!("Monitor: {monitor}"));
+                workspace_basic_data_view(ui, workspace);
+                ui.label(format!("Floating: {floating}"));
+                ui.label(format!("Fullscreen: {fullscreen} ({fullscreen_mode})"));
+                ui.label(format!("XWayland: {xwayland}"));
+                ui.label(format!("Pinned: {pinned}"));
 
-        let ((x_min, x_max), (y_min, y_max)) = self.monitors.iter().fold(
-            ((0, 0), (0, 0)),
-            |((x_min, x_max), (y_min, y_max)), monitor: &Monitor| {
-                (
-                    (
-                        x_min.min(monitor.x),
-                        x_max.max(monitor.x + monitor.width as i32),
-                    ),
-                    (
-                        y_min.min(monitor.y),
-                        y_max.max(monitor.y + monitor.height as i32),
-                    ),
-                )
-            },
-        );
+                grouped.iter().for_each(|client| {
+                    client_data_view(ui, client, "Grouped");
+                });
 
-        log::info!(
-            "x_min: {}, x_max: {}, y_min: {}, y_max: {}",
-            x_min,
-            x_max,
-            y_min,
-            y_max
-        );
+                if let Some(swallowing) = swallowing {
+                    client_data_view(ui, swallowing, "Swallowing");
+                }
+            });
+        }
 
-        let scale_x = bounds.width / (x_max - x_min).abs() as f32;
-        let scale_y = bounds.height / (y_max - y_min).abs() as f32;
+        fn general_data_view(ui: &mut egui::Ui) {
+            let mut any_shown = false;
 
-        log::info!("scale_x: {}, scale_y: {}", scale_x, scale_y);
+            if let Ok(version) = Version::get() {
+                ui.collapsing("Hyprland Version", |ui| {
+                    let Version {
+                        branch,
+                        commit,
+                        dirty,
+                        commit_message,
+                        flags,
+                    } = version;
 
-        log::info!("MONITORS: {:?}", self.monitors);
+                    ui.label(format!("Branch: {branch}"));
+                    ui.label(format!("Commit: {commit}"));
+                    ui.label(format!("Dirty: {dirty}"));
+                    ui.label(format!("Commit Message: {commit_message}"));
+                    ui.label(format!("Flags: [{}]", flags.join(", ")));
+                });
 
-        self.monitors
-            .iter()
-            .map(|monitor: &Monitor| {
-                let rect = Path::rectangle(
-                    Point::new(monitor.x as f32 * scale_x, monitor.y as f32 * scale_y),
-                    Size::new(
-                        monitor.width as f32 * scale_x,
-                        monitor.height as f32 * scale_y,
-                    ),
-                );
+                any_shown = true;
+            }
 
-                let mut frame = Frame::new(bounds);
-                frame.stroke(
-                    &rect,
-                    Stroke {
-                        style: stroke::Style::Solid(Color::BLACK),
-                        width: 4.0,
-                        line_cap: stroke::LineCap::Square,
-                        line_join: stroke::LineJoin::Miter,
-                        line_dash: Default::default(),
-                    },
-                );
-                frame.fill_rectangle(
-                    Point::new(monitor.x as f32 * scale_x, monitor.y as f32 * scale_y),
-                    Size::new(
-                        monitor.width as f32 * scale_x,
-                        monitor.height as f32 * scale_y,
-                    ),
-                    Color::WHITE,
-                );
+            if let Ok(Some(active_window)) = Client::get_active() {
+                client_data_view(ui, &active_window, "Active Window");
 
-                frame.fill_text(format!(
-                    "{} ({}) {}x{} {}Hz",
-                    monitor.name, monitor.id, monitor.width, monitor.height, monitor.refresh_rate
+                any_shown = true;
+            }
+
+            if let Ok(cursor_position) = CursorPosition::get() {
+                ui.label(format!(
+                    "Cursor Position: {}x{}",
+                    cursor_position.x, cursor_position.y
                 ));
 
-                frame.into_geometry()
-            })
-            .collect()
+                any_shown = true;
+            }
+
+            if !any_shown {
+                ui.label("Error: No data available");
+            }
+        }
+
+        fn transform_data_view(ui: &mut egui::Ui, transform: &Transforms) {
+            ui.label(format!(
+                "Transform: {}",
+                match transform {
+                    Transforms::Normal => "Normal",
+                    Transforms::Normal90 => "Normal +90",
+                    Transforms::Normal180 => "Normal +180",
+                    Transforms::Normal270 => "Normal +270",
+                    Transforms::Flipped => "Flipped",
+                    Transforms::Flipped90 => "Flipped +90",
+                    Transforms::Flipped180 => "Flipped +180",
+                    Transforms::Flipped270 => "Flipped +270",
+                }
+            ));
+        }
+
+        fn workspace_basic_data_view(ui: &mut egui::Ui, workspace_basic: &WorkspaceBasic) {
+            let WorkspaceBasic { id, name } = workspace_basic;
+
+            ui.label(format!("Workspace {name} ({id})"));
+        }
+
+        fn monitors_data_view(ui: &mut egui::Ui) {
+            match Monitors::get() {
+                Ok(monitors) => {
+                    monitors.iter().for_each(|monitor| {
+                        let Monitor {
+                            id,
+                            name,
+                            description,
+                            width,
+                            height,
+                            refresh_rate,
+                            x,
+                            y,
+                            active_workspace,
+                            reserved,
+                            scale,
+                            transform,
+                            focused,
+                            dpms_status,
+                        } = monitor;
+
+                        ui.collapsing(format!("Monitor {name} ({id})"), |ui| {
+                            ui.label(format!("Description: {description}"));
+                            ui.label(format!("Size: {width}x{height}"));
+                            ui.label(format!("Refresh Rate: {refresh_rate}"));
+                            ui.label(format!("Position: {x}x{y}"));
+                            workspace_basic_data_view(ui, active_workspace);
+                            ui.label(format!("Reserved: {reserved:?}"));
+                            ui.label(format!("Scale: {scale}"));
+                            transform_data_view(ui, transform);
+                            ui.label(format!("Focused: {focused}"));
+                            ui.label(format!("DPMS Status: {dpms_status}"));
+                        });
+                    });
+                }
+                Err(error) => {
+                    ui.label(format!("Error: {error}"));
+                }
+            }
+        }
+
+        fn workspace_data_view(ui: &mut egui::Ui, workspace: &Workspace) {
+            let Workspace {
+                id,
+                name,
+                monitor,
+                windows,
+                fullscreen,
+                last_window,
+                last_window_title,
+            } = workspace;
+
+            ui.collapsing(format!("Workspace {name} ({id})"), |ui| {
+                ui.label(format!("Monitor: {monitor}"));
+                ui.label(format!("Fullscreen: {fullscreen}"));
+                ui.label(format!(
+                    "Windows: {windows} (Last: {last_window_title} ({last_window}))"
+                ));
+            });
+        }
+
+        fn workspaces_data_view(ui: &mut egui::Ui) {
+            match Workspaces::get() {
+                Ok(workspaces) => {
+                    workspaces.iter().for_each(|workspace| {
+                        workspace_data_view(ui, workspace);
+                    });
+                }
+                Err(err) => {
+                    ui.label(format!("Error: {err}"));
+                }
+            }
+        }
+
+        fn clients_data_view(ui: &mut egui::Ui) {
+            match Clients::get() {
+                Ok(clients) => {
+                    clients.iter().for_each(|client| {
+                        client_data_view(ui, client, &client.title);
+                    });
+                }
+                Err(err) => {
+                    ui.label(format!("Error: {err}"));
+                }
+            }
+        }
+
+        fn layer_client_data_view(ui: &mut egui::Ui, layer_client: &LayerClient) {
+            let LayerClient {
+                address,
+                x,
+                y,
+                w,
+                h,
+                namespace,
+            } = layer_client;
+
+            ui.collapsing(format!("LayerClient {address}"), |ui| {
+                ui.label(format!("Namespace: {namespace}"));
+                ui.label(format!("Size: {w}x{h}"));
+                ui.label(format!("Position: {x}x{y}"));
+            });
+        }
+
+        fn layer_data_view(ui: &mut egui::Ui, (layer_name, layer_data): (&String, &LayerDisplay)) {
+            ui.collapsing(format!("Layer {layer_name}"), |ui| {
+                ui.heading("Levels");
+                ui.separator();
+
+                layer_data
+                    .iter()
+                    .sorted_by_key(|(level_name, _)| (*level_name).clone())
+                    .for_each(|(level_name, level_data)| {
+                        ui.collapsing(format!("Level {level_name}"), |ui| {
+                            level_data.iter().for_each(|layer_client| {
+                                layer_client_data_view(ui, layer_client);
+                            });
+                        });
+                    });
+            });
+        }
+
+        fn layers_data_view(ui: &mut egui::Ui) {
+            match Layers::get() {
+                Ok(layers) => {
+                    layers
+                        .iter()
+                        .sorted_by_key(|(layer_name, _)| (*layer_name).clone())
+                        .for_each(|layer| {
+                            layer_data_view(ui, layer);
+                        });
+                }
+                Err(err) => {
+                    ui.label(format!("Error: {err}"));
+                }
+            }
+        }
+
+        fn devices_data_view(ui: &mut egui::Ui) {
+            match Devices::get() {
+                Ok(devices) => {
+                    let Devices {
+                        mice,
+                        keyboards,
+                        tablets,
+                    } = devices;
+                    let mut any_shown = false;
+
+                    if !mice.is_empty() {
+                        ui.collapsing("Mice", |ui| {
+                            mice.iter().for_each(|Mouse { address, name }| {
+                                ui.label(format!("{address} ({name})"));
+                            });
+                        });
+
+                        any_shown = true;
+                    }
+
+                    if !keyboards.is_empty() {
+                        ui.collapsing("Keyboards", |ui| {
+                            keyboards.iter().for_each(
+                                |Keyboard {
+                                     address,
+                                     name,
+                                     rules,
+                                     model,
+                                     layout,
+                                     variant,
+                                     options,
+                                     active_keymap,
+                                 }| {
+                                    ui.collapsing(format!("{name} ({model}) ({address})"), |ui| {
+                                        ui.label(format!("Rules: {rules}"));
+                                        ui.label(format!("Layout: {layout}"));
+                                        ui.label(format!("Variant: {variant}"));
+                                        ui.label(format!("Options: {options}"));
+                                        ui.label(format!("Active Keymap: {active_keymap}"));
+                                    });
+                                },
+                            );
+                        });
+
+                        any_shown = true;
+                    }
+
+                    if !tablets.is_empty() {
+                        ui.collapsing("Tablets", |ui| {
+                            tablets.iter().for_each(
+                                |Tablet {
+                                     address,
+                                     tablet_type,
+                                     belongs_to,
+                                     name,
+                                 }| {
+                                    ui.collapsing(
+                                        format!(
+                                            "{} ({address})",
+                                            match name {
+                                                Some(name) => name,
+                                                None => "Unknown",
+                                            }
+                                        ),
+                                        |ui| {
+                                            ui.label(format!(
+                                                "Type: {}",
+                                                match tablet_type {
+                                                    None => {
+                                                        "Unknown"
+                                                    }
+                                                    Some(tablet_type) => {
+                                                        match tablet_type {
+                                                            TabletType::TabletPad => "Pad",
+                                                            TabletType::TabletTool => "Tool",
+                                                        }
+                                                    }
+                                                }
+                                            ));
+                                            ui.label(format!(
+                                                "Belongs to: {}",
+                                                match belongs_to {
+                                                    None => {
+                                                        "None".to_string()
+                                                    }
+                                                    Some(belongs_to) => {
+                                                        match belongs_to {
+                                                            TabletBelongsTo::TabletPad {
+                                                                name,
+                                                                address,
+                                                            } => {
+                                                                format!("Pad {name} ({address})")
+                                                            }
+                                                            TabletBelongsTo::Address(address) => {
+                                                                address.to_string()
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ));
+                                        },
+                                    );
+                                },
+                            );
+                        });
+
+                        any_shown = true;
+                    }
+
+                    if !any_shown {
+                        ui.label("No devices found");
+                    }
+                }
+                Err(err) => {
+                    ui.label(format!("Error: {err}"));
+                }
+            }
+        }
+
+        egui::ScrollArea::vertical().show(ui, |ui| match self {
+            AppTab::General => general_data_view(ui),
+            AppTab::Monitors => monitors_data_view(ui),
+            AppTab::Workspaces => workspaces_data_view(ui),
+            AppTab::Clients => clients_data_view(ui),
+            AppTab::Layers => layers_data_view(ui),
+            AppTab::Devices => devices_data_view(ui),
+        });
     }
-}*/
+}

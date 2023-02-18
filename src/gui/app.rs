@@ -1,57 +1,59 @@
-use iced::{executor, Application, Command, Element, Renderer, Theme};
+use crate::gui::tabs::AppTab;
 
-use crate::gui::{
-    tabs::{templates::RefreshableTabMsg, GuiAppTab, Tabs, TabsMsg},
-    wrapper_functions::*,
-};
-
-#[derive(Debug, Clone)]
-pub enum GuiAppMsg {
-    Tabs(TabsMsg),
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct App {
+    selected_tabs: Vec<AppTab>,
 }
 
-pub struct GuiApp {
-    tabs: Tabs,
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            selected_tabs: vec![AppTab::General],
+        }
+    }
 }
 
-impl Application for GuiApp {
-    type Executor = executor::Default;
-    type Message = GuiAppMsg;
-    type Theme = Theme;
-    type Flags = ();
+impl App {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        if let Some(storage) = cc.storage {
+            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+        }
 
-    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        (
-            Self { tabs: Tabs::new() },
-            Command::perform(get_clients(), |clients| {
-                GuiAppMsg::Tabs(TabsMsg::RefreshableTab(
-                    GuiAppTab::Clients,
-                    RefreshableTabMsg::Refreshed(clients),
-                ))
-            }),
-        )
+        Default::default()
     }
 
-    #[inline]
-    fn title(&self) -> String {
-        "Hyprr".to_string()
+    fn header(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                self.selected_tabs = enum_iterator::all()
+                    .filter(|tab| {
+                        let mut selected = self.selected_tabs.contains(tab);
+                        tab.selectable_label(ui, &mut selected);
+
+                        selected
+                    })
+                    .collect();
+            })
+        });
     }
 
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
-        return match message {
-            GuiAppMsg::Tabs(tabs_msg) => self.tabs.update(tabs_msg),
-        };
+    fn main_panel(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.selected_tabs.iter().for_each(|tab| {
+                tab.window(ui);
+            });
+        });
+    }
+}
 
-        //Command::none()
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.header(ctx);
+
+        self.main_panel(ctx);
     }
 
-    #[inline]
-    fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
-        self.tabs.view()
-    }
-
-    #[inline]
-    fn theme(&self) -> Self::Theme {
-        Theme::Dark
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 }
