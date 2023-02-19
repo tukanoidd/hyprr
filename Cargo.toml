@@ -17,7 +17,8 @@ downcast-rs = "1.2.0"
 
 #hyprland = "0.3.0"
 #hyprland = { path = "../hyprland-rs" }
-hyprland = { git = "https://github.com/tukanoidd/hyprland-rs" }
+#hyprland = { git = "https://github.com/tukanoidd/hyprland-rs" }
+hyprland = { git = "https://github.com/hyprland-community/hyprland-rs" }
 
 socket2 = "0.4.7"
 nix = "0.26.1"
