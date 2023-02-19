@@ -3,31 +3,8 @@
 mod cli;
 mod gui;
 
-use clap::Parser;
 use color_eyre::eyre;
-
-use crate::cli::Commands;
-
-#[derive(clap::Parser)]
-#[command(
-    author,
-    version,
-    about,
-    long_about = Some("hyprctl reimplementation in Rust with additional functionality")
-)]
-struct Args {
-    #[arg(short, long, exclusive(true))]
-    gui: bool,
-
-    #[arg(short, long)]
-    json: bool,
-
-    #[arg(long)]
-    batch: Option<String>,
-
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
+use itertools::Itertools;
 
 fn main() -> eyre::Result<()> {
     color_eyre::install()?;
@@ -35,15 +12,18 @@ fn main() -> eyre::Result<()> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::init_timed();
 
-    let Args {
-        gui,
-        json,
-        batch,
-        command,
-    } = Args::parse();
+    let args = std::env::args().collect_vec();
 
-    match gui {
-        true => gui::execute(),
-        false => cli::execute(batch, command, json),
+    if args.len() <= 1 {
+        return Err(eyre::eyre!("{}", cli::USAGE));
+    }
+
+    let args = &args[1..];
+    dbg!(&args);
+
+    if ["-g", "--gui"].contains(&args[0].as_str()) {
+        gui::execute()
+    } else {
+        cli::execute(args)
     }
 }
